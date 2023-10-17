@@ -1,0 +1,263 @@
+---
+title: "lab3bayesian"
+output:
+  html_document: default
+  pdf_document: default
+date: "2022-10-29"
+---
+
+```{r }
+#install.packages("rstanarm")
+library(rstanarm)
+#install.packages("bayesplot")
+library(bayesplot)
+#install.packages("rstan")
+library(rstan)
+```
+
+#################### EX1 ####################
+If the interest is in modelling a dichotomous variable, the logistic regression model is the most common choice. It is a GLM with the Bernoulli (or binomial) distribution assumed for data and the linear predictor (function of the covariate pattern xi) is specified for a suitable transformation of the probability. In particular, the logit function is used:
+
+
+
+In this example, we analyze data from a survey about the vote expressed during the 2000 US Presidential elections. In the dataset elections, the response variable takes value 1 if the subject voted for Bush, 0 otherwise, as auxiliary information the gender (1=female, 0=male), the race (1=black, 0=other) and the state are reported.
+```{r }
+#upload
+data1<- read.csv("C:/Users/Utente/Downloads/election.csv")
+
+#overview
+str(data1)
+```
+
+(a) Fit a simple logistic regression model
+```{r }
+mod_ex1<- stan_glm(bush~black+female, data=data1, family = "binomial")
+
+```
+
+
+(b) Check the convergence of the MCMC algorithm;
+```{r }
+summary(mod_ex1, digits=4)
+stan_trace(mod_ex1)
+stan_ac(mod_ex1)
+
+```
+
+
+(c) Draw 100 samples from the posterior predictive distribution;
+```{r }
+y_tilde <- posterior_predict(mod_ex1, draws = 100)
+
+```
+
+
+(d) Use the posterior predictive distribution to check the model performance on the whole density and, in particular, on the mean and the sum of the outcome;
+```{r }
+pp_check(mod_ex1)
+ppc_stat(y = data1$bush, yrep = y_tilde, stat = "mean", binwidth = 0.01)
+ppc_stat(y = data1$bush, yrep = y_tilde, stat = "sum", binwidth = 0.01)
+
+```
+
+(e) Estimate the probability of voting Bush for subject 4.
+```{r }
+theta<-posterior_linpred(mod_ex1)
+hist(theta[,4])
+mean(theta[,4]);sd(theta[,4])
+quantile(theta[,4], probs = c(0.025,0.5,0.975))
+
+```
+
+#################### EX2 ####################
+The vending dataset reports information about the performances of n = 25 vending machines. The response variable is the recharge time required for each machine. The following explanatory variables are available: product amount x1 and distance covered by the operator x2. The normal linear regression model is assumed and it has the following likelihood:
+
+
+
+
+```{r }
+#upload
+data2<-read.csv("C:/Users/Utente/Downloads/vending.csv")
+
+#overview
+str(data2)
+pairs(data2)
+```
+
+
+(a) Fit a generalized linear model using the default priors
+```{r }
+mod_ex2<-stan_glm(formula = time~amount+distance,data = data2, family = "gaussian")
+#priors are not specified
+
+```
+
+
+(b) Which priors are selected by rstanarm?
+```{r }
+prior_summary(mod_ex2)
+```
+
+
+
+(c) Evaluate the convergence of the chains using different methods
+```{r }
+stan_trace(mod_ex2)
+stan_ac(mod_ex2)
+summary(mod_ex2, digits = 3)
+
+```
+
+
+(d) Fit a generalized linear model using the following priors:
+β0 ∼ N (0, c)  β1 ∼ N (0, c) and σ2 ∼ Cauchy(0, 1)
+```{r }
+mod_ex2b<-stan_glm(formula = time~amount+distance, data = data2, family = "gaussian",
+                   prior=normal(0,100),
+                   prior_intercept = normal(0,100),
+                   prior_aux = cauchy(0,1))
+```
+
+
+(e) Draw 100 samples from the posterior predictive distribution of the
+model in (d);
+```{r }
+y_tilde<-posterior_predict(mod_ex2b, draws= 100)
+
+```
+
+
+(f) On the same model, perform densities comparison with the first 10 draws, and posterior predictive checks on the mean;
+```{r }
+ppc_dens_overlay(y = data2$time, yrep = y_tilde[1:10,])
+ppc_stat(y = data2$time, yrep = y_tilde, stat = "mean")
+
+```
+
+
+(g) Make inference on the linear predictor µ, visualizing its distribution
+and computing the main descriptive values
+```{r }
+mu <- posterior_linpred(mod_ex2b)
+
+hist(mu[,10],breaks=30)
+mean(mu[,10]);sd(mu[,10])
+quantile(mu[,10], probs = c(0.025,0.5,0.975))
+
+```
+
+
+(h) Carry out posterior inference on the statistic R2B (Bayesian version of R2) defined as:
+```{r }
+sigma_post<-as.matrix(mod_ex2b,pars = "sigma")
+
+n<-nrow(data2)
+var_y<-var(data2$time)*(n-1)/n
+R2bayes<-1-sigma_post^2/var_y
+
+hist(R2bayes, breaks=30)
+mean(R2bayes);sd(R2bayes)
+quantile(R2bayes, probs = c(0.025,0.5,0.975))
+
+```
+
+
+#################### EX3 ####################
+Dataset salmonella is the result of a dose-response study about the mutagenicity on the salmonella bacteria when exposed to quinoline: three plates (j = 1, 2, 3) are processed at each dose (xi; i = 1, ..., 6) of quinoline, the number of revertant colonies of Salmonella are counted yij.
+First, a simple Poisson regression model is considered. Its Bayesian formulation is:
+
+yij |µi ∼ P(µi) 
+log(µi)|β = β1 + β2 log(xi + 10) + β3xi , i = 1, ..., 6.
+βk ∼ N (0, c), k = 1, 2, 3;
+
+Then, a Poisson model with random effects is assumed in order to take into account the eventual presence of overdispersion. Therefore, the term λj , that is plate-specific is included in the linear predictor:
+
+
+
+
+
+
+
+
+
+```{r }
+#upload
+data3<-read.csv("C:/Users/Utente/Downloads/salmonella.csv")
+
+#overview
+str(data3)
+pairs(data3[,-4], col=as.factor(data3$plate), pch=19)
+
+```
+
+
+(1) Fit the simple Poisson model using the stan glm function;
+```{r }
+mod_ex3a<-stan_glm(formula = colonies~quinoline+log_quinoline, 
+                   data = data3,
+                   family = "poisson",
+                   prior = normal(0,10, autoscale=T),
+                   prior_intercept = normal(0,10, autoscale=T))
+```
+
+
+(2) Fit the mixed effects model using the stan glmer function;
+```{r }
+mod_ex3b<-stan_glmer(formula = colonies~quinoline+log_quinoline+(1|plate), 
+                     data = data3,
+                     family = "poisson",
+                     prior = normal(0,10, autoscale=T),
+                     prior_intercept = normal(0,10, autoscale=T))
+```
+
+
+(3) Check for convergence of the MCMC and autocorrelation;
+```{r }
+# convergence a
+summary(mod_ex3a)
+stan_trace(mod_ex3a)
+stan_ac(mod_ex3a)
+
+# convergence b
+summary(mod_ex3b)
+stan_trace(mod_ex3b)
+stan_ac(mod_ex3b)
+
+```
+
+
+(4) Propose a possible solution to the convergence problem;
+```{r }
+#increasing iterations
+mod_ex3b<-update(mod_ex3b, iter=6000)
+summary(mod_ex3b)
+stan_trace(mod_ex3b)
+stan_ac(mod_ex3b)
+
+```
+
+
+(5) Perform model selection using the WAIC creteria;
+```{r }
+waic(mod_ex3a)
+waic(mod_ex3b)
+```
+
+
+(6) Look at posterior predictive checks on the selected model;
+```{r }
+y_tilde3b<-posterior_predict(mod_ex3b)
+ppc_dens_overlay(y = data3$colonies, yrep = y_tilde3b[1100:1200,])
+ppc_stat(y = data3$colonies, yrep = y_tilde3b, stat = "mean")
+ppc_stat(y = data3$colonies, yrep = y_tilde3b, stat = "sd")
+```
+
+
+(7) Use the posterior predictive distribution to predict the number of revertant colonies with a value of quinoline equals to 500 on plate ”A”.
+```{r }
+data3_new<-data.frame(quinoline=500, log_quinoline = log(500+10), plate ="A")
+y_tilde_new <- posterior_predict(mod_ex3b, newdata = data3_new)
+plot(density(y_tilde_new), ylim=c(0,0.2))
+mean(y_tilde_new);sd(y_tilde_new)
+
+```

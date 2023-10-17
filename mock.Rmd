@@ -1,0 +1,81 @@
+---
+title: "mock"
+output: html_document
+date: "2022-11-02"
+---
+Load the data included in the csv file “Data_Ex_4.csv”.
+The dataset contains the observations from a survey about the vote expressed during the 2000 US
+Presidential elections. The response variable bush assumes value 1 if the subject voted for Bush, 0
+otherwise. As auxiliary information, the gender (1=female, 0=male), the race (1=black, 0=other) and the state are included in the study.
+
+A logistic regression model needs to be estimated. The default rstanarm priors are required. You are asked to consider two models:
+a) Simple model with bush as response variable and race and gender as covariates,
+b) Model with bush as response variable, race and gender as covariates and a random intercept to account for the correlation of respondents from the same state.
+
+The default prior distributions provided by rstanarm are used. You are asked to:
+1. Write (on the R script) the distributional assumptions of model b) reporting the likelihood and the priors 
+```{r}
+library(rstanarm)
+library(bayesplot)
+library(rstan)
+```
+```{r}
+data1<-read.csv("C:/Users/Utente/Downloads/election (1).csv")
+str(data1)
+
+yi|pi~ber(pi)
+p
+```
+
+2. Fit both models using the functions included in the rstanarm package. 
+```{r}
+mod1<-stan_glm(bush~black+female, data = data1, family = "binomial" )
+mod2<-stan_glmer(bush~female+black+(1|state), data = data1, family = "binomial")
+
+```
+
+3. Properly assess the convergence of the MCMC algorithms. 
+```{r}
+summary(mod1)
+summary(mod2)
+stan_trace(mod1)
+stan_trace(mod2)
+stan_ac(mod1)
+stan_ac(mod2)
+
+```
+
+4. Describe the basic concepts of the effective sample size indicator and explain how it can be useful in the previous step.
+
+The effective sample size indicator is used to measure the uncertainty given by the presence of the autocorrelation among realizations drawn. If this indicator is lower with respect to N, highlights potential issues of autocorrelation and more sample might be required in order to compute acceptable estimates of the posterior distribution.
+
+
+5. Select the best model according to the WAIC rule. 
+```{r}
+waic(mod1) #=loo(mod1)
+waic(mod2)
+
+
+```
+
+6. Generate samples from the posterior predictive distribution of the selected model and evaluate the model performance.
+```{r}
+ytilde<-posterior_predict(mod2, draws = 100)
+ppc_dens_overlay(y=data1$bush, yrep=ytilde)
+pp_check(mod2)
+
+```
+
+7. Consider a female elector with race = 0 from state 49: compare the posterior distribution of the linear predictor (transformed to the original scale) for this subject under models a) and b). 
+```{r}
+data1[135,]
+nrow(data1)
+
+post1<-posterior_linpred(mod1,data=data1[135,])
+post2<-posterior_linpred(mod2,data=data1[135,])
+hist(post)
+mean(post)
+plot(density(post))
+ 
+```
+
